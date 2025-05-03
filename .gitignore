@@ -1,0 +1,6 @@
+# Ignore model files and checkpoints
+*.safetensors
+*.bin
+*.pt
+results/
+checkpoint-*/
