@@ -9,9 +9,10 @@ os.makedirs("results", exist_ok=True)
 # Paths
 MODEL_PATH = "results/final_model"
 
-# Load GPT-2 tokenizer
-tokenizer = AutoTokenizer.from_pretrained("gpt2")
+# Load GPT-2 Large tokenizer
+tokenizer = AutoTokenizer.from_pretrained("gpt2-large")
 tokenizer.pad_token = tokenizer.eos_token  # Required for padding
+tokenizer.model_max_length = 1024  # Ensure it can handle long generations
 
 # Check if model already fine-tuned
 if os.path.exists(MODEL_PATH):
@@ -19,7 +20,7 @@ if os.path.exists(MODEL_PATH):
     model = AutoModelForCausalLM.from_pretrained(MODEL_PATH)
 else:
     print("Loading base GPT-2 model...")
-    model = AutoModelForCausalLM.from_pretrained("gpt2")
+    model = AutoModelForCausalLM.from_pretrained("gpt2-large")
 
     # Load and tag author data
     def load_data(file_path, author_token):
@@ -40,21 +41,18 @@ else:
         return tokens
 
     tokenized_dataset = dataset.map(tokenize, batched=True)
-
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
     training_args = TrainingArguments(
-    output_dir="results/",
-    learning_rate=5e-5,               # Faster learning on small data
-    per_device_train_batch_size=1,    # Small batch = less memory usage
-    num_train_epochs=1,               # One full pass over your data
-    max_steps=250,                    # Absolute limit on steps
-    weight_decay=0.01,
-    save_total_limit=1,               # Keep only final model
-    logging_steps=10,    
-    save_steps=100            # Frequent progress updates
+        output_dir="results/",
+        learning_rate=3e-5,
+        per_device_train_batch_size=1,
+        num_train_epochs=3,
+        weight_decay=0.01,
+        save_total_limit=1,
+        logging_steps=10,
+        save_steps=100
     )
-
 
     trainer = Trainer(
         model=model,
@@ -63,10 +61,10 @@ else:
         data_collator=data_collator,
     )
 
+    print("Starting training...")
     trainer.train()
     print("Saving fine-tuned model...")
 
-    
     model.save_pretrained(MODEL_PATH)
     tokenizer.save_pretrained(MODEL_PATH)
 
@@ -92,12 +90,14 @@ with open("results/story_samples.txt", 'w', encoding='utf-8') as f:
         inputs = tokenizer(prompt, return_tensors="pt")
         outputs = model.generate(
             **inputs,
-            max_length=200,         # Longer outputs
-            temperature=1.0,        # More creative
-            top_k=50,               # Filter unlikely tokens
-            top_p=0.95,             # Nucleus sampling
-            do_sample=True,         # Enable sampling
-            num_return_sequences=1  # One story per prompt
+            max_length=140,         # Aim for ~100-word stories
+            min_length=100,         # Enforce minimum length
+            temperature=1.0,        # Creativity
+            top_k=50,
+            top_p=0.95,
+            repetition_penalty=1.1, # Reduces loops
+            do_sample=True,
+            num_return_sequences=1
         )
         story = tokenizer.decode(outputs[0], skip_special_tokens=True)
         f.write(story + "\n\n")
